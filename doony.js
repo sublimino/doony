@@ -366,30 +366,53 @@ jQuery(function($) {
         return hash;
     };
 
-    var isJobPage = function(path) {
-        return path.match(/^(\/view\/[^\/]+)?\/job\/.*?\//) !== null;
+    var getButtonInfo = function() {
+	      var buttonInfo = {};
+
+	      $("a.task-link").each(function() {
+		        var link = $(this);
+
+		        if (!link.text().match(/Build with Parameters|Build Now/i)) {
+		            return true;
+		        }
+
+		        buttonInfo.innerHTML = link.text();
+		        buttonInfo.href = link.attr("href");
+		        buttonInfo.hasParams = link.text() === "Build with Parameters";
+		        return false;
+	      });
+
+	      return Object.keys(buttonInfo).length > 0 && buttonInfo;
     };
 
-    /**
+	var isJobPage = function(path) {
+		return path.match(/^(?:\/view\/[^\/]+)?\/job\/.*?\//) !== null;
+	};
+
+	var isBuildWithParametersPage = function(path) {
+		return path.match(/^(?:\/view\/[^\/]+)?\/job\/[^\/]+\/build/) !== null;
+	};
+
+	/**
      * This is a little tricky because it needs to match either the homepage or
      * a page with configuration. The configuration check is for an equals sign
      * in the 3rd part of the URL
      */
     var isJobHomepage = function(path) {
-        return path.match(/^\/job\/.*?\/(.*?=.*?\/)?$/) !== null;
+        return path.match(/^(?:\/view\/[^\/]+)?\/job\/.*?\/(.*?=.*?\/)?$/) !== null;
     };
 
     var isRootHomepage = function(path) {
-        return path.match(/^\/job\/.*?\/$/) !== null;
+        return path.match(/^(?:\/view\/[^\/]+)?\/job\/.*?\/$/) !== null;
     };
 
     var getRootJobUrl = function(path) {
-        return path.match(/^\/job\/.*?\//)[0];
+        return path.match(/^(?:\/view\/[^\/]+)?\/job\/.*?\//)[0];
     };
 
     // note: this function assumes you're already on a job page
     var getJobUrl = function(path) {
-        return path.match(/^\/job\/.*?\/(.*?=.*?\/)?/)[0];
+        return path.match(/^(?:\/view\/[^\/]+)?\/job\/.*?\/(.*?=.*?\/)?/)[0];
     };
 
     var redirectForUrl = function(jobUrl, buildNumber) {
@@ -614,37 +637,57 @@ jQuery(function($) {
     }
 
     if (isJobPage(window.location.pathname)) {
-        var button = document.createElement('button');
-        button.className = "btn btn-primary doony-build";
-        button.innerHTML = "Build Now";
-        $(button).click(function() {
-            var jobUrl = getRootJobUrl(window.location.pathname);
-            // The build post endpoint doesn't tell you the number of the next
-            // build, so get it before we create a build.
-            $.getJSON(jobUrl + 'api/json?depth=1&tree=nextBuildNumber,lastBuild[building]', function(data) {
-                $.post(jobUrl + 'build', function() {
-                    // in case there's an immediate redirect, don't show the
-                    // bar.
-                    var message = "Build #" + data.nextBuildNumber + " created, you will be redirected when it is ready.";
-                    if (JSON.stringify(data) !== "{}" &&
-                        'lastBuild' in data &&
-                        data.lastBuild !== null &&
-                        data.lastBuild.building
-                    ) {
-                        message += " <a href='#' id='doony-clear-build'>Cancel the current build</a>";
-                    }
-                    showButterBar(message, Alert.WARNING);
-                    redirectToNewJobConsole(getJobUrl(window.location.pathname),
-                        data.nextBuildNumber);
-                }).fail(function(jqXHR) {
-                    if (jqXHR.status === 403) {
-                        showButterBar("Cannot create build. Maybe you need to log in or have the 'build' permission.", Alert.ERROR);
-                    } else {
-                        showButterBar("An error occured. Please try again.", Alert.ERROR);
-                    }
-                });
-            });
-        });
+        var buttonInfo = getButtonInfo();
+
+        if (buttonInfo) {
+	        var button = document.createElement('button');
+
+	        button.className = "btn btn-primary doony-build";
+	        button.innerHTML = buttonInfo.innerHTML;
+
+	        $(button).click(function () {
+		        if (buttonInfo.hasParams) {
+			        if (! isBuildWithParametersPage(window.location.pathname)) {
+				        window.location.href = buttonInfo.href;
+				        return false;
+			        }
+
+			        $.getJSON(jobUrl + 'api/json?depth=1&tree=nextBuildNumber,lastBuild[building]', function (data) {
+				        document.querySelectorAll('.submit-button.primary[name=Submit] button')[0].click();
+				        redirectToNewJobConsole(getJobUrl(window.location.pathname),
+					        data.nextBuildNumber);
+			        });
+                    return false;
+		        }
+
+		        var jobUrl = getRootJobUrl(window.location.pathname);
+		        // The build post endpoint doesn't tell you the number of the next
+		        // build, so get it before we create a build.
+		        $.getJSON(jobUrl + 'api/json?depth=1&tree=nextBuildNumber,lastBuild[building]', function (data) {
+			        $.post(jobUrl + 'build', function () {
+				        // in case there's an immediate redirect, don't show the
+				        // bar.
+				        var message = "Build #" + data.nextBuildNumber + " created, you will be redirected when it is ready.";
+				        if (JSON.stringify(data) !== "{}" &&
+					        'lastBuild' in data &&
+					        data.lastBuild !== null &&
+					        data.lastBuild.building
+				        ) {
+					        message += " <a href='#' id='doony-clear-build'>Cancel the current build</a>";
+				        }
+				        showButterBar(message, Alert.WARNING);
+				        redirectToNewJobConsole(getJobUrl(window.location.pathname),
+					        data.nextBuildNumber);
+			        }).fail(function (jqXHR, textStatus, errorThrown) {
+				        if (jqXHR.status === 403) {
+					        showButterBar("Cannot create build. Maybe you need to log in or have the 'build' permission.", Alert.ERROR);
+				        } else {
+					        showButterBar("An error occured. Please try again.", Alert.ERROR);
+				        }
+			        });
+		        });
+	        });
+        }
 
         $(document).on('click', '#doony-clear-build', function(e) {
             e.preventDefault();
