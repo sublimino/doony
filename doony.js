@@ -367,7 +367,7 @@ jQuery(function($) {
     };
 
     var isJobPage = function(path) {
-        return path.match(/^\/job\/.*?\//) !== null;
+        return path.match(/^(\/view\/[^\/]+)?\/job\/.*?\//) !== null;
     };
 
     /**
